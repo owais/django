@@ -1018,15 +1018,32 @@ class SQLInsertCompiler(SQLCompiler):
 
         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
 
-        if self.return_id and self.connection.features.can_return_id_from_insert:
+        should_return_id = self.return_id and self.connection.features.can_return_id_from_insert
+        should_return_fields = self.return_fields and self.connection.features.can_return_fields_from_insert
+
+        if should_return_id or should_return_fields:
+
             params = param_rows[0]
-            col = "%s.%s" % (qn(opts.db_table), qn(opts.pk.column))
             result.append("VALUES (%s)" % ", ".join(placeholder_rows[0]))
-            r_fmt, r_params = self.connection.ops.return_insert_id()
+            cols = []
+
+            if should_return_id:
+                cols.append("%s.%s" % (qn(opts.db_table), qn(opts.pk.column)))
+                return_clause = self.connection.ops.return_insert_id
+
+            if should_return_fields:
+                cols.extend(
+                    ["%s.%s" % (qn(opts.db_table), qn(field.column),)
+                    for field in self.return_fields]
+                )
+                return_clause = self.connection.ops.return_values
+
             # Skip empty r_fmt to allow subclasses to customize behavior for
             # 3rd party backends. Refs #19096.
+            r_fmt, r_params = return_clause()
+
             if r_fmt:
-                result.append(r_fmt % col)
+                result.append(r_fmt % ",".join(cols))
                 params += r_params
             return [(" ".join(result), tuple(params))]
 
@@ -1039,14 +1056,17 @@ class SQLInsertCompiler(SQLCompiler):
                 for p, vals in zip(placeholder_rows, param_rows)
             ]
 
-    def execute_sql(self, return_id=False):
+    def execute_sql(self, return_id=False, return_fields=None):
         assert not (return_id and len(self.query.objs) != 1)
         self.return_id = return_id
+        self.return_fields = return_fields
         with self.connection.cursor() as cursor:
             for sql, params in self.as_sql():
                 cursor.execute(sql, params)
-            if not (return_id and cursor):
+            if not ((return_id or return_fields) and cursor):
                 return
+            if self.connection.features.can_return_fields_from_insert:
+                return self.connection.ops.fetch_returned_fields(cursor)
             if self.connection.features.can_return_id_from_insert:
                 return self.connection.ops.fetch_returned_insert_id(cursor)
             return self.connection.ops.last_insert_id(cursor,
@@ -1125,18 +1145,31 @@ class SQLUpdateCompiler(SQLCompiler):
         where, params = self.compile(self.query.where)
         if where:
             result.append('WHERE %s' % where)
+        if self.return_fields:
+            r_fmt, r_params = self.connection.ops.return_values()
+            if r_fmt:
+                result.append(
+                    r_fmt % ", ".join(
+                        ["%s.%s" % (qn(table), qn(field.column),)
+                        for field in self.return_fields]
+                    ))
         return ' '.join(result), tuple(update_params + params)
 
-    def execute_sql(self, result_type):
+    def execute_sql(self, result_type, return_fields=None):
         """
         Execute the specified update. Returns the number of rows affected by
         the primary update query. The "primary update query" is the first
         non-empty query that is executed. Row counts for any subsequent,
         related queries are not available.
         """
+        self.return_fields = return_fields
         cursor = super(SQLUpdateCompiler, self).execute_sql(result_type)
         try:
             rows = cursor.rowcount if cursor else 0
+            if self.return_fields:
+                return_values = self.connection.ops.fetch_returned_fields(cursor)
+            else:
+                return_values = []
             is_empty = cursor is None
         finally:
             if cursor:
@@ -1146,7 +1179,7 @@ class SQLUpdateCompiler(SQLCompiler):
             if is_empty and aux_rows:
                 rows = aux_rows
                 is_empty = False
-        return rows
+        return rows, return_values
 
     def pre_sql_setup(self):
         """

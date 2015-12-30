@@ -788,12 +788,17 @@ class Model(six.with_metaclass(ModelBase)):
             values = [(f, None, (getattr(self, f.attname) if raw else f.pre_save(self, False)))
                       for f in non_pks]
             forced_update = update_fields or force_update
-            updated = self._do_update(base_qs, using, pk_val, values, update_fields,
-                                      forced_update)
+            updated, return_values = self._do_update(
+                base_qs, using, pk_val, values, update_fields, forced_update,
+                meta.update_return_fields
+            )
             if force_update and not updated:
                 raise DatabaseError("Forced update did not affect any rows.")
             if update_fields and not updated:
                 raise DatabaseError("Save with update_fields did not affect any rows.")
+            if return_values:
+                for field, value in zip(meta.update_return_fields, return_values):
+                    setattr(self, field.attname, value)
         if not updated:
             if meta.order_with_respect_to:
                 # If this is a model with an order_with_respect_to
@@ -808,25 +813,38 @@ class Model(six.with_metaclass(ModelBase)):
                 fields = [f for f in fields if not isinstance(f, AutoField)]
 
             update_pk = bool(meta.has_auto_field and not pk_set)
-            result = self._do_insert(cls._base_manager, using, fields, update_pk, raw)
+            result = self._do_insert(
+                cls._base_manager, using, fields, update_pk, raw,
+                meta.insert_return_fields
+            )
             if update_pk:
-                setattr(self, meta.pk.attname, result)
+                if meta.insert_return_fields:
+                    pk = result[0]
+                    result = result[1:]
+                else:
+                    pk = result
+                setattr(self, meta.pk.attname, pk)
+            if meta.insert_return_fields:
+                for field, value in zip(meta.insert_return_fields, result):
+                    setattr(self, field.attname, value)
         return updated
 
-    def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
+    def _do_update(self, base_qs, using, pk_val, values, update_fields,
+                   forced_update, return_fields):
         """
         This method will try to update the model. If the model was updated (in
         the sense that an update query was done and a matching row was found
         from the DB) the method will return True.
         """
         filtered = base_qs.filter(pk=pk_val)
-        if not values:
+        if not values and not self._meta.db_generated_fields:
             # We can end up here when saving a model in inheritance chain where
             # update_fields doesn't target any field in current model. In that
             # case we just say the update succeeded. Another case ending up here
             # is a model with just PK - in that case check that the PK still
-            # exists.
-            return update_fields is not None or filtered.exists()
+            # exists.However, we still want to update if there is a DB
+            # generated field present in the model
+            return (update_fields is not None or filtered.exists(), [])
         if self._meta.select_on_save and not forced_update:
             if filtered.exists():
                 # It may happen that the object is deleted from the DB right after
@@ -836,17 +854,23 @@ class Model(six.with_metaclass(ModelBase)):
                 # successfully (a row is matched and updated). In order to
                 # distinguish these two cases, the object's existence in the
                 # database is again checked for if the UPDATE query returns 0.
-                return filtered._update(values) > 0 or filtered.exists()
+                updated, values = filtered._update(values, return_fields)
+                if updated > 0:
+                    return True, values
+                return filtered.exists(), []
             else:
-                return False
-        return filtered._update(values) > 0
+                return False, []
+        updated, values = filtered._update(values, return_fields)
+        if updated > 0:
+            return True, values
 
-    def _do_insert(self, manager, using, fields, update_pk, raw):
+    def _do_insert(self, manager, using, fields, update_pk, raw, return_fields):
         """
         Do an INSERT. If update_pk is defined then this method should return
         the new pk for the model.
         """
         return manager._insert([self], fields=fields, return_id=update_pk,
+                               return_fields=return_fields,
                                using=using, raw=raw)
 
     def delete(self, using=None, keep_parents=False):
