@@ -642,6 +642,12 @@ class Field(RegisterLookupMixin):
         except KeyError:
             return None
 
+    def db_return_type(self, connection):
+        try:
+            return connection.return_data_types[self.get_internal_type()]
+        except KeyError:
+            return None
+
     def rel_db_type(self, connection):
         """
         Return the data type that a related field pointing to this field should

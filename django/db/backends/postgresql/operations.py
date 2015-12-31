@@ -221,7 +221,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def return_insert_id(self):
         return "RETURNING %s", ()
 
-    def return_values(self):
+    def return_values(self, columns, include_id=True):
         return "RETURNING %s", ()
 
     def bulk_insert_sql(self, fields, placeholder_rows):

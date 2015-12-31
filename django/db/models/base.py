@@ -818,11 +818,9 @@ class Model(six.with_metaclass(ModelBase)):
                 meta.insert_return_fields
             )
             if update_pk:
+                pk = result[0]
                 if meta.insert_return_fields:
-                    pk = result[0]
                     result = result[1:]
-                else:
-                    pk = result
                 setattr(self, meta.pk.attname, pk)
             if meta.insert_return_fields:
                 for field, value in zip(meta.insert_return_fields, result):

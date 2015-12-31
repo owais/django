@@ -1019,7 +1019,7 @@ class SQLInsertCompiler(SQLCompiler):
         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
 
         should_return_id = self.return_id and self.connection.features.can_return_id_from_insert
-        should_return_fields = self.return_fields and self.connection.features.can_return_fields_from_insert
+        should_return_fields = self.return_fields and self.connection.features.can_return_multiple_values
 
         if should_return_id or should_return_fields:
 
@@ -1027,24 +1027,30 @@ class SQLInsertCompiler(SQLCompiler):
             result.append("VALUES (%s)" % ", ".join(placeholder_rows[0]))
             cols = []
 
+            return_columns = []
+            # Skip empty r_fmt to allow subclasses to customize behavior for
+            # 3rd party backends. Refs #19096.
             if should_return_id:
                 cols.append("%s.%s" % (qn(opts.db_table), qn(opts.pk.column)))
-                return_clause = self.connection.ops.return_insert_id
+                r_fmt, r_params = self.connection.ops.return_insert_id()
+                return_columns.append((qn(opts.pk.column), opts.pk.db_return_type(self.connection),))
 
             if should_return_fields:
                 cols.extend(
                     ["%s.%s" % (qn(opts.db_table), qn(field.column),)
                     for field in self.return_fields]
                 )
-                return_clause = self.connection.ops.return_values
+                return_columns.extend(
+                    [(qn(field.column), field.db_return_type(self.connection),)
+                     for field in self.return_fields]
+                )
+                r_fmt, r_params = self.connection.ops.return_values(return_columns)
 
-            # Skip empty r_fmt to allow subclasses to customize behavior for
-            # 3rd party backends. Refs #19096.
-            r_fmt, r_params = return_clause()
-
+            print r_fmt, r_params
             if r_fmt:
                 result.append(r_fmt % ",".join(cols))
                 params += r_params
+            print [(" ".join(result), tuple(params))]
             return [(" ".join(result), tuple(params))]
 
         if can_bulk:
@@ -1065,10 +1071,10 @@ class SQLInsertCompiler(SQLCompiler):
                 cursor.execute(sql, params)
             if not ((return_id or return_fields) and cursor):
                 return
-            if self.connection.features.can_return_fields_from_insert:
+            if self.connection.features.can_return_multiple_values:
                 return self.connection.ops.fetch_returned_fields(cursor)
             if self.connection.features.can_return_id_from_insert:
-                return self.connection.ops.fetch_returned_insert_id(cursor)
+                return [self.connection.ops.fetch_returned_insert_id(cursor)]
             return self.connection.ops.last_insert_id(cursor,
                     self.query.get_meta().db_table, self.query.get_meta().pk.column)
 
@@ -1153,6 +1159,7 @@ class SQLUpdateCompiler(SQLCompiler):
                         ["%s.%s" % (qn(table), qn(field.column),)
                         for field in self.return_fields]
                     ))
+        print ' '.join(result), tuple(update_params + params)
         return ' '.join(result), tuple(update_params + params)
 
     def execute_sql(self, result_type, return_fields=None):
