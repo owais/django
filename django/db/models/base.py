@@ -817,11 +817,11 @@ class Model(six.with_metaclass(ModelBase)):
                 cls._base_manager, using, fields, update_pk, raw,
                 meta.insert_return_fields
             )
-            if update_pk:
+            if update_pk and result:
                 pk = result[0]
+                setattr(self, meta.pk.attname, pk)
                 if meta.insert_return_fields:
                     result = result[1:]
-                setattr(self, meta.pk.attname, pk)
             if meta.insert_return_fields:
                 for field, value in zip(meta.insert_return_fields, result):
                     setattr(self, field.attname, value)

@@ -159,7 +159,7 @@ class BaseDatabaseOperations(object):
         """
         return cursor.fetchone()[0]
 
-    def fetch_returned_fields(self, cursor):
+    def fetch_returned_fields(self, cursor, fields):
         """
         Given a cursor object that has just performed an INSERT...RETURNING
         statement into a table, returns the fields mentioned in the RETURNING

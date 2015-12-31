@@ -1018,33 +1018,23 @@ class SQLInsertCompiler(SQLCompiler):
 
         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
 
-        should_return_id = self.return_id and self.connection.features.can_return_id_from_insert
-        should_return_fields = self.return_fields and self.connection.features.can_return_multiple_values
-
-        if should_return_id or should_return_fields:
+        if self.should_return_id or self.should_return_fields:
 
             params = param_rows[0]
             result.append("VALUES (%s)" % ", ".join(placeholder_rows[0]))
-            cols = []
 
-            return_columns = []
             # Skip empty r_fmt to allow subclasses to customize behavior for
             # 3rd party backends. Refs #19096.
-            if should_return_id:
-                cols.append("%s.%s" % (qn(opts.db_table), qn(opts.pk.column)))
-                r_fmt, r_params = self.connection.ops.return_insert_id()
-                return_columns.append((qn(opts.pk.column), opts.pk.db_return_type(self.connection),))
-
-            if should_return_fields:
-                cols.extend(
-                    ["%s.%s" % (qn(opts.db_table), qn(field.column),)
-                    for field in self.return_fields]
-                )
-                return_columns.extend(
-                    [(qn(field.column), field.db_return_type(self.connection),)
-                     for field in self.return_fields]
-                )
+            if self.should_return_fields:
+                cols = ["%s.%s" % (qn(opts.db_table), qn(field.column),)
+                        for field in self.return_fields]
+                return_columns = [(qn(field.column), field.db_return_type(self.connection),)
+                                  for field in self.return_fields]
                 r_fmt, r_params = self.connection.ops.return_values(return_columns)
+
+            elif self.should_return_id:
+                cols = ["%s.%s" % (qn(opts.db_table), qn(opts.pk.column))]
+                r_fmt, r_params = self.connection.ops.return_insert_id()
 
             if r_fmt:
                 result.append(r_fmt % ",".join(cols))
@@ -1063,15 +1053,22 @@ class SQLInsertCompiler(SQLCompiler):
     def execute_sql(self, return_id=False, return_fields=None):
         assert not (return_id and len(self.query.objs) != 1)
         self.return_id = return_id
-        self.return_fields = return_fields
+        self.return_fields = return_fields[:]
+
+        self.should_return_id = bool(self.return_id and self.connection.features.can_return_id_from_insert)
+        self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)
+        if self.should_return_fields:
+            meta = self.query.get_meta()
+            self.return_fields.insert(0, meta.auto_field)
+
         with self.connection.cursor() as cursor:
             for sql, params in self.as_sql():
                 cursor.execute(sql, params)
             if not ((return_id or return_fields) and cursor):
                 return
-            if self.connection.features.can_return_multiple_values:
-                return self.connection.ops.fetch_returned_fields(cursor)
-            if self.connection.features.can_return_id_from_insert:
+            if self.should_return_fields:
+                return self.connection.ops.fetch_returned_fields(cursor, self.return_fields)
+            if self.should_return_id:
                 return [self.connection.ops.fetch_returned_insert_id(cursor)]
             return self.connection.ops.last_insert_id(cursor,
                     self.query.get_meta().db_table, self.query.get_meta().pk.column)
@@ -1171,12 +1168,14 @@ class SQLUpdateCompiler(SQLCompiler):
         non-empty query that is executed. Row counts for any subsequent,
         related queries are not available.
         """
-        self.return_fields = return_fields
+        self.return_fields = return_fields[:]
+        self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)
+
         cursor = super(SQLUpdateCompiler, self).execute_sql(result_type)
         try:
             rows = cursor.rowcount if cursor else 0
-            if self.return_fields:
-                return_values = self.connection.ops.fetch_returned_fields(cursor)
+            if self.should_return_fields:
+                return_values = self.connection.ops.fetch_returned_fields(cursor, self.return_fields)
             else:
                 return_values = []
             is_empty = cursor is None

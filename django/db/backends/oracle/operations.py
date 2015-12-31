@@ -237,10 +237,10 @@ WHEN (new.%(col_name)s IS NULL)
     def fetch_returned_insert_id(self, cursor):
         return int(cursor._insert_id_var.getvalue())
 
-    def fetch_returned_fields(self, cursor):
+    def fetch_returned_fields(self, cursor, return_fields):
         values = []
-        for field in cursor._insert_returning_vars:
-            values.append(field.getvalue())
+        for field, val in zip(return_fields, getattr(cursor, '_insert_returning_vars', [])):
+            values.append(field.to_python(val.getvalue()))
         return values
 
     def field_cast_sql(self, db_type, internal_type):
