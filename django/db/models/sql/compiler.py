@@ -1046,11 +1046,9 @@ class SQLInsertCompiler(SQLCompiler):
                 )
                 r_fmt, r_params = self.connection.ops.return_values(return_columns)
 
-            print r_fmt, r_params
             if r_fmt:
                 result.append(r_fmt % ",".join(cols))
                 params += r_params
-            print [(" ".join(result), tuple(params))]
             return [(" ".join(result), tuple(params))]
 
         if can_bulk:
@@ -1152,14 +1150,18 @@ class SQLUpdateCompiler(SQLCompiler):
         if where:
             result.append('WHERE %s' % where)
         if self.return_fields:
-            r_fmt, r_params = self.connection.ops.return_values()
+            r_fmt, r_params = self.connection.ops.return_values(
+                [(qn(field.column), field.db_return_type(self.connection),)
+                 for field in self.return_fields]
+            )
             if r_fmt:
                 result.append(
                     r_fmt % ", ".join(
                         ["%s.%s" % (qn(table), qn(field.column),)
                         for field in self.return_fields]
                     ))
-        print ' '.join(result), tuple(update_params + params)
+            if r_params:
+                params += r_params
         return ' '.join(result), tuple(update_params + params)
 
     def execute_sql(self, result_type, return_fields=None):
