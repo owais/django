@@ -165,7 +165,7 @@ class BaseDatabaseOperations(object):
         statement into a table, returns the fields mentioned in the RETURNING
         clause.
         """
-        return cursor.fetchone()
+        return cursor.fetchall()
 
     def field_cast_sql(self, db_type, internal_type):
         """

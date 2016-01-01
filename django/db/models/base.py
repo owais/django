@@ -770,6 +770,9 @@ class Model(six.with_metaclass(ModelBase)):
         meta = cls._meta
         non_pks = [f for f in meta.local_concrete_fields if not f.primary_key]
 
+        if not raw:
+            non_pks = [f for f in non_pks if not f.delegated]
+
         if update_fields:
             non_pks = [f for f in non_pks
                        if f.name in update_fields or f.attname in update_fields]
@@ -790,14 +793,14 @@ class Model(six.with_metaclass(ModelBase)):
             forced_update = update_fields or force_update
             updated, return_values = self._do_update(
                 base_qs, using, pk_val, values, update_fields, forced_update,
-                meta.update_return_fields
+                meta.return_on_update_fields, meta.delegated_fields
             )
             if force_update and not updated:
                 raise DatabaseError("Forced update did not affect any rows.")
             if update_fields and not updated:
                 raise DatabaseError("Save with update_fields did not affect any rows.")
             if return_values:
-                for field, value in zip(meta.update_return_fields, return_values):
+                for field, value in zip(meta.return_on_update_fields, return_values):
                     setattr(self, field.attname, value)
         if not updated:
             if meta.order_with_respect_to:
@@ -815,27 +818,27 @@ class Model(six.with_metaclass(ModelBase)):
             update_pk = bool(meta.has_auto_field and not pk_set)
             result = self._do_insert(
                 cls._base_manager, using, fields, update_pk, raw,
-                meta.insert_return_fields
-            )
+                meta.return_on_insert_fields
+            )[0]
             if update_pk and result:
                 pk = result[0]
                 setattr(self, meta.pk.attname, pk)
-                if meta.insert_return_fields:
+                if meta.return_on_insert_fields:
                     result = result[1:]
-            if meta.insert_return_fields:
-                for field, value in zip(meta.insert_return_fields, result):
+            if meta.return_on_insert_fields:
+                for field, value in zip(meta.return_on_insert_fields, result):
                     setattr(self, field.attname, value)
         return updated
 
     def _do_update(self, base_qs, using, pk_val, values, update_fields,
-                   forced_update, return_fields):
+                   forced_update, return_fields, delegated_fields):
         """
         This method will try to update the model. If the model was updated (in
         the sense that an update query was done and a matching row was found
         from the DB) the method will return True.
         """
         filtered = base_qs.filter(pk=pk_val)
-        if not values and not self._meta.db_generated_fields:
+        if not values:
             # We can end up here when saving a model in inheritance chain where
             # update_fields doesn't target any field in current model. In that
             # case we just say the update succeeded. Another case ending up here

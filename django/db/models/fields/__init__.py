@@ -75,7 +75,7 @@ def _load_field(app_label, model_name, field_name):
 #   * attname:       The attribute to use on the model object. This is the same as
 #                    "name", except in the case of ForeignKeys, where "_id" is
 #                    appended.
-#   * db_generated:  Whether field value is set in DB or not
+#   * delegated:  Whether field value is set in DB or not
 #   * db_column:     The db_column specified in the model (or None).
 #   * column:        The database column for this field. This is the same as
 #                    "attname", except if db_column is specified.
@@ -142,8 +142,8 @@ class Field(RegisterLookupMixin):
             db_index=False, rel=None, default=NOT_PROVIDED, editable=True,
             serialize=True, unique_for_date=None, unique_for_month=None,
             unique_for_year=None, choices=None, help_text='', db_column=None,
-            db_tablespace=None, fetch_on_insert=None, fetch_on_update=None,
-            db_generated=False, auto_created=False, validators=[],
+            db_tablespace=None, return_on_insert=None, return_on_update=None,
+            delegated=False, auto_created=False, validators=[],
             error_messages=None):
         self.name = name
         self.verbose_name = verbose_name  # May be set by set_attributes_from_name
@@ -167,17 +167,17 @@ class Field(RegisterLookupMixin):
         self.db_column = db_column
         self.db_tablespace = db_tablespace or settings.DEFAULT_INDEX_TABLESPACE
         self.auto_created = auto_created
-        self.db_generated = db_generated
+        self.delegated = delegated
 
-        if fetch_on_insert is None:
-            self.fetch_on_insert = db_generated
+        if return_on_insert is None:
+            self.return_on_insert = delegated
         else:
-            self.fetch_on_insert = fetch_on_insert
+            self.return_on_insert = return_on_insert
 
-        if fetch_on_update is None:
-            self.fetch_on_update = db_generated
+        if return_on_update is None:
+            self.return_on_update = delegated
         else:
-            self.fetch_on_update = fetch_on_update
+            self.return_on_update = return_on_update
 
         # Adjust the appropriate creation counter, and save our local copy.
         if auto_created:
@@ -427,9 +427,9 @@ class Field(RegisterLookupMixin):
             "help_text": '',
             "db_column": None,
             "db_tablespace": settings.DEFAULT_INDEX_TABLESPACE,
-            "db_generated": False,
-            "fetch_on_insert": False,
-            "fetch_on_update": False,
+            "delegated": False,
+            "return_on_insert": False,
+            "return_on_update": False,
             "auto_created": False,
             "validators": [],
             "error_messages": None,

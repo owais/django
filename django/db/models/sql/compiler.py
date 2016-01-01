@@ -1053,7 +1053,7 @@ class SQLInsertCompiler(SQLCompiler):
     def execute_sql(self, return_id=False, return_fields=None):
         assert not (return_id and len(self.query.objs) != 1)
         self.return_id = return_id
-        self.return_fields = return_fields[:]
+        self.return_fields = (return_fields or [])[:]
 
         self.should_return_id = bool(self.return_id and self.connection.features.can_return_id_from_insert)
         self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)
@@ -1070,8 +1070,8 @@ class SQLInsertCompiler(SQLCompiler):
                 return self.connection.ops.fetch_returned_fields(cursor, self.return_fields)
             if self.should_return_id:
                 return [self.connection.ops.fetch_returned_insert_id(cursor)]
-            return self.connection.ops.last_insert_id(cursor,
-                    self.query.get_meta().db_table, self.query.get_meta().pk.column)
+            return [self.connection.ops.last_insert_id(cursor,
+                    self.query.get_meta().db_table, self.query.get_meta().pk.column)]
 
 
 class SQLDeleteCompiler(SQLCompiler):
@@ -1097,6 +1097,7 @@ class SQLUpdateCompiler(SQLCompiler):
         parameters.
         """
         self.pre_sql_setup()
+
         if not self.query.values:
             return '', ()
         qn = self.quote_name_unless_alias
@@ -1168,7 +1169,7 @@ class SQLUpdateCompiler(SQLCompiler):
         non-empty query that is executed. Row counts for any subsequent,
         related queries are not available.
         """
-        self.return_fields = return_fields[:]
+        self.return_fields = (return_fields or [])[:]
         self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)
 
         cursor = super(SQLUpdateCompiler, self).execute_sql(result_type)
