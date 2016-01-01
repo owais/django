@@ -625,9 +625,8 @@ class QuerySet(object):
         self._for_write = True
         query = self.query.clone(sql.UpdateQuery)
         query.add_update_values(kwargs)
-        meta = query.get_meta()
         with transaction.atomic(using=self.db, savepoint=False):
-            rows, return_values = query.get_compiler(self.db).execute_sql(CURSOR, meta.return_on_update_fields)
+            rows, return_values = query.get_compiler(self.db).execute_sql(CURSOR)
         self._result_cache = None
         return rows
     update.alters_data = True

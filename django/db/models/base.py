@@ -819,7 +819,7 @@ class Model(six.with_metaclass(ModelBase)):
             result = self._do_insert(
                 cls._base_manager, using, fields, update_pk, raw,
                 meta.return_on_insert_fields
-            )[0]
+            )
             if update_pk and result:
                 pk = result[0]
                 setattr(self, meta.pk.attname, pk)

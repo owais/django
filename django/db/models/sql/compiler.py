@@ -1147,7 +1147,7 @@ class SQLUpdateCompiler(SQLCompiler):
         where, params = self.compile(self.query.where)
         if where:
             result.append('WHERE %s' % where)
-        if self.return_fields:
+        if self.should_return_fields:
             r_fmt, r_params = self.connection.ops.return_values(
                 [(qn(field.column), field.db_return_type(self.connection),)
                  for field in self.return_fields]
