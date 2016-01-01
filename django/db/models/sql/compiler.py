@@ -25,6 +25,8 @@ class SQLCompiler(object):
         # these are set as a side-effect of executing the query. Note that we calculate
         # separately a list of extra select columns needed for grammatical correctness
         # of the query, but these columns are not included in self.select.
+        self.should_return_id = False
+        self.should_return_fields = False
         self.select = None
         self.annotation_col_map = None
         self.klass_info = None
@@ -1184,9 +1186,10 @@ class SQLUpdateCompiler(SQLCompiler):
             if cursor:
                 cursor.close()
         for query in self.query.get_related_updates():
-            aux_rows = query.get_compiler(self.using).execute_sql(result_type)
+            aux_rows, aux_vals = query.get_compiler(self.using).execute_sql(result_type)
             if is_empty and aux_rows:
                 rows = aux_rows
+                return_values = aux_vals
                 is_empty = False
         return rows, return_values
 

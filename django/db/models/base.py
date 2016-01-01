@@ -862,8 +862,8 @@ class Model(six.with_metaclass(ModelBase)):
             else:
                 return False, []
         updated, values = filtered._update(values, return_fields)
-        if updated > 0:
-            return True, values
+        updated = updated > 0
+        return updated, values
 
     def _do_insert(self, manager, using, fields, update_pk, raw, return_fields):
         """

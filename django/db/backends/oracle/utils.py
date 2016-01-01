@@ -34,11 +34,10 @@ class InsertReturningVar(object):
     def bind_parameter(self, cursor):
         param = cursor.cursor.var(self._db_type)
         cursor._insert_returning_vars = getattr(
-            cursor,'_insert_returning_vars', []
+            cursor, '_insert_returning_vars', []
         )
         cursor._insert_returning_vars.append(param)
         return param
-
 
 
 class Oracle_datetime(datetime.datetime):

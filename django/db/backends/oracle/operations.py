@@ -12,7 +12,7 @@ from django.utils.encoding import force_bytes, force_text
 
 from .base import Database
 from .utils import (
-    InsertIdVar, InsertReturningVar, Oracle_datetime, convert_unicode
+    InsertIdVar, InsertReturningVar, Oracle_datetime, convert_unicode,
 )
 
 
