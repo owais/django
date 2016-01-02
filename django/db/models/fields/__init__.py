@@ -143,8 +143,8 @@ class Field(RegisterLookupMixin):
             serialize=True, unique_for_date=None, unique_for_month=None,
             unique_for_year=None, choices=None, help_text='', db_column=None,
             db_tablespace=None, return_on_insert=None, return_on_update=None,
-            delegated=False, auto_created=False, validators=[],
-            error_messages=None):
+            delegate=False, delegate_on_insert=None, delegate_on_update=None,
+            auto_created=False, validators=[], error_messages=None):
         self.name = name
         self.verbose_name = verbose_name  # May be set by set_attributes_from_name
         self._verbose_name = verbose_name  # Store original for deconstruction
@@ -167,17 +167,13 @@ class Field(RegisterLookupMixin):
         self.db_column = db_column
         self.db_tablespace = db_tablespace or settings.DEFAULT_INDEX_TABLESPACE
         self.auto_created = auto_created
-        self.delegated = delegated
+        self.delegate = delegate
 
-        if return_on_insert is None:
-            self.return_on_insert = delegated
-        else:
-            self.return_on_insert = return_on_insert
-
-        if return_on_update is None:
-            self.return_on_update = delegated
-        else:
-            self.return_on_update = return_on_update
+        default_if_None = lambda field, default: default if field is None else field
+        self.delegate_on_insert = default_if_None(delegate_on_insert, self.delegate)
+        self.delegate_on_update = default_if_None(delegate_on_update, self.delegate)
+        self.return_on_insert = default_if_None(return_on_insert, self.delegate_on_insert)
+        self.return_on_update = default_if_None(return_on_update, self.delegate_on_update)
 
         # Adjust the appropriate creation counter, and save our local copy.
         if auto_created:
@@ -427,7 +423,9 @@ class Field(RegisterLookupMixin):
             "help_text": '',
             "db_column": None,
             "db_tablespace": settings.DEFAULT_INDEX_TABLESPACE,
-            "delegated": False,
+            "delegate": False,
+            "delegate_on_update": False,
+            "delegate_on_insert": False,
             "return_on_insert": False,
             "return_on_update": False,
             "auto_created": False,

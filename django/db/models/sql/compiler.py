@@ -1053,9 +1053,10 @@ class SQLInsertCompiler(SQLCompiler):
             ]
 
     def execute_sql(self, return_id=False, return_fields=None):
-        assert not (return_id and len(self.query.objs) != 1)
+        insert_many = len(self.query.objs) != 1
+        assert not (return_id and insert_many)
         self.return_id = return_id
-        self.return_fields = (return_fields or [])[:]
+        self.return_fields = [] if insert_many else (return_fields or [])[:]
 
         self.should_return_id = bool(self.return_id and self.connection.features.can_return_id_from_insert)
         self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)

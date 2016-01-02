@@ -611,6 +611,7 @@ class ManagerTest(SimpleTestCase):
         'annotate',
         'complex_filter',
         'exclude',
+        'ignore_delegated',
         'in_bulk',
         'iterator',
         'earliest',

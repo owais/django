@@ -1,11 +1,12 @@
 import unittest
 
-from django.db import connection
+from django.db import NotSupportedError, connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from .models import (
     DelegatedWithDBDefault, OnlyDelegatedFields, WithDelegatedFields,
+    PartiallyDelegated
 )
 
 
@@ -21,25 +22,64 @@ class DelegatedFieldsTestCase(TestCase):
     def test_model_with_only_delegated_fields(self):
         obj = OnlyDelegatedFields.objects.create(a="John")
         self.assertIsNone(obj.a)
-        obj.a = "Lorem Ipsum"
-        obj.save()
-        self.assertIsNotNone(obj.a)
-
-        obj.refresh_from_db()
-        self.assertIsNone(obj.a)
-
-        obj.save(ignore_delegated_fields=['a'])
-        self.assertIsNone(obj.a)
+        self.assertRaises(NotSupportedError, obj.save)
 
     def test_ignore_delegated_fields(self):
         obj = OnlyDelegatedFields.objects.create(a="John")
         self.assertIsNone(obj.a)
         obj.a = "Lorem Ipsum"
-        obj.save(ignore_delegated_fields=['a'])
+        obj.save(ignore_delegated=['a'])
         self.assertEqual(obj.a, "Lorem Ipsum")
 
         obj.refresh_from_db()
         self.assertEqual(obj.a, "Lorem Ipsum")
+
+
+class TestQuerySetMethods(TestCase):
+
+    def test_create(self):
+        p = PartiallyDelegated.objects.create()
+        self.assertIsNone(p.insert)
+        self.assertIsNone(p.update)
+        self.assertIsNone(p.both)
+
+        p = PartiallyDelegated.objects.create(insert=1, update=1, both=1)
+        self.assertIsNone(p.insert)
+        self.assertEqual(p.update, 1)
+        self.assertIsNone(p.both)
+
+    def test_ignore_with_create(self):
+        p = PartiallyDelegated.objects.ignore_delegated('insert').create(insert=1, update=1, both=1)
+        self.assertEqual(p.insert, 1)
+        self.assertEqual(p.update, 1)
+        self.assertIsNone(p.both)
+
+        p = PartiallyDelegated.objects.ignore_delegated('insert', 'both').create(insert=1, update=1, both=1)
+        self.assertEqual(p.insert, 1)
+        self.assertEqual(p.update, 1)
+        self.assertEqual(p.both, 1)
+
+    def test_update(self):
+        for i in range(10):
+            PartiallyDelegated.objects.ignore_delegated(
+                'insert', 'both').create(insert=1, update=1, both=1)
+        affected = PartiallyDelegated.objects.update(insert=2)
+        self.assertEqual(affected, 10)
+        self.assertEqual(PartiallyDelegated.objects.filter(insert=2).count(), 10)
+
+        affected = PartiallyDelegated.objects.update(update=2, both=2)
+        self.assertEqual(affected, 0)
+        self.assertEqual(PartiallyDelegated.objects.filter(update=2).count(), 0)
+        self.assertEqual(PartiallyDelegated.objects.filter(both=2).count(), 0)
+
+        affected = PartiallyDelegated.objects.ignore_delegated('update').update(update=2)
+        self.assertEqual(affected, 10)
+        self.assertEqual(PartiallyDelegated.objects.filter(update=2).count(), 10)
+        self.assertEqual(PartiallyDelegated.objects.filter(both=2).count(), 0)
+
+        affected = PartiallyDelegated.objects.ignore_delegated('both').update(both=2)
+        self.assertEqual(affected, 10)
+        self.assertEqual(PartiallyDelegated.objects.filter(both=2).count(), 10)
 
 
 @unittest.skipUnless(connection.vendor == 'postgresql', "PostgreSQL specific tests")

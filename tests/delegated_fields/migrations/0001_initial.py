@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             name='DelegatedWithDBDefault',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('now', models.DateTimeField(delegated=True, return_on_insert=True, return_on_update=True)),
+                ('now', models.DateTimeField(delegate=True, delegate_on_insert=True, delegate_on_update=True, return_on_insert=True, return_on_update=True)),
                 ('num', models.IntegerField(return_on_insert=True, return_on_update=True)),
                 ('num_a', models.IntegerField(return_on_insert=True)),
                 ('num_b', models.IntegerField(return_on_update=True)),
@@ -28,18 +28,28 @@ class Migration(migrations.Migration):
             name='OnlyDelegatedFields',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('a', models.TextField(delegated=True, null=True, return_on_insert=True, return_on_update=True)),
+                ('a', models.TextField(delegate=True, delegate_on_insert=True, delegate_on_update=True, null=True, return_on_insert=True, return_on_update=True)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='PartiallyDelegated',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('insert', models.IntegerField(delegate_on_insert=True, null=True, return_on_insert=True)),
+                ('update', models.IntegerField(delegate_on_update=True, null=True, return_on_update=True)),
+                ('both', models.IntegerField(delegate=True, delegate_on_insert=True, delegate_on_update=True, null=True, return_on_insert=True, return_on_update=True)),
             ],
         ),
         migrations.CreateModel(
             name='WithDelegatedFields',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('a', models.TextField(delegated=True, null=True, return_on_insert=True, return_on_update=True)),
+                ('a', models.TextField(delegate=True, delegate_on_insert=True, delegate_on_update=True, null=True, return_on_insert=True, return_on_update=True)),
                 ('b', models.TextField(null=True)),
             ],
         ),
     ]
+
 
 
 if connection.vendor == 'postgresql':
