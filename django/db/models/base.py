@@ -614,7 +614,7 @@ class Model(six.with_metaclass(ModelBase)):
         return getattr(self, field.attname)
 
     def save(self, force_insert=False, force_update=False, using=None,
-             update_fields=None):
+             update_fields=None, ignore_delegated_fields=None):
         """
         Saves the current instance. Override this in a subclass if you want to
         control the saving process.
@@ -696,11 +696,13 @@ class Model(six.with_metaclass(ModelBase)):
                 update_fields = frozenset(loaded_fields)
 
         self.save_base(using=using, force_insert=force_insert,
-                       force_update=force_update, update_fields=update_fields)
+                       force_update=force_update, update_fields=update_fields,
+                       ignore_delegated_fields=ignore_delegated_fields)
     save.alters_data = True
 
     def save_base(self, raw=False, force_insert=False,
-                  force_update=False, using=None, update_fields=None):
+                  force_update=False, using=None, update_fields=None,
+                  ignore_delegated_fields=None):
         """
         Handles the parts of saving which should be done only once per save,
         yet need to be done in raw saves, too. This includes some sanity
@@ -720,11 +722,14 @@ class Model(six.with_metaclass(ModelBase)):
         meta = cls._meta
         if not meta.auto_created:
             signals.pre_save.send(sender=origin, instance=self, raw=raw, using=using,
-                                  update_fields=update_fields)
+                                  update_fields=update_fields,
+                                  ignore_delegated_fields=ignore_delegated_fields)
         with transaction.atomic(using=using, savepoint=False):
             if not raw:
-                self._save_parents(cls, using, update_fields)
-            updated = self._save_table(raw, cls, force_insert, force_update, using, update_fields)
+                self._save_parents(cls, using, update_fields, ignore_delegated_fields)
+            updated = self._save_table(
+                raw, cls, force_insert, force_update, using, update_fields, ignore_delegated_fields
+            )
         # Store the database on which the object was saved
         self._state.db = using
         # Once saved, this is no longer a to-be-added instance.
@@ -732,12 +737,15 @@ class Model(six.with_metaclass(ModelBase)):
 
         # Signal that the save is complete
         if not meta.auto_created:
-            signals.post_save.send(sender=origin, instance=self, created=(not updated),
-                                   update_fields=update_fields, raw=raw, using=using)
+            signals.post_save.send(
+                sender=origin, instance=self, created=(not updated),
+                update_fields=update_fields, ignore_delegated_fields=ignore_delegated_fields,
+                raw=raw, using=using
+            )
 
     save_base.alters_data = True
 
-    def _save_parents(self, cls, using, update_fields):
+    def _save_parents(self, cls, using, update_fields, ignore_delegated_fields):
         """
         Saves all the parents of cls using values from self.
         """
@@ -747,8 +755,14 @@ class Model(six.with_metaclass(ModelBase)):
             if (field and getattr(self, parent._meta.pk.attname) is None
                     and getattr(self, field.attname) is not None):
                 setattr(self, parent._meta.pk.attname, getattr(self, field.attname))
-            self._save_parents(cls=parent, using=using, update_fields=update_fields)
-            self._save_table(cls=parent, using=using, update_fields=update_fields)
+            self._save_parents(
+                cls=parent, using=using, update_fields=update_fields,
+                ignore_delegated_fields=ignore_delegated_fields
+            )
+            self._save_table(
+                cls=parent, using=using, update_fields=update_fields,
+                ignore_delegated_fields=ignore_delegated_fields
+            )
             # Set the parent's PK value to self.
             if field:
                 setattr(self, field.attname, self._get_pk_val(parent._meta))
@@ -762,7 +776,8 @@ class Model(six.with_metaclass(ModelBase)):
                     delattr(self, cache_name)
 
     def _save_table(self, raw=False, cls=None, force_insert=False,
-                    force_update=False, using=None, update_fields=None):
+                    force_update=False, using=None, update_fields=None,
+                    ignore_delegated_fields=None):
         """
         Does the heavy-lifting involved in saving. Updates or inserts the data
         for a single table.
@@ -770,8 +785,12 @@ class Model(six.with_metaclass(ModelBase)):
         meta = cls._meta
         non_pks = [f for f in meta.local_concrete_fields if not f.primary_key]
 
+        ignore_delegated_fields = ignore_delegated_fields or []
         if not raw:
-            non_pks = [f for f in non_pks if not f.delegated]
+            non_pks = [f for f in non_pks
+                       if not f.delegated
+                       or f.attname in ignore_delegated_fields
+                       or f.name in ignore_delegated_fields]
 
         if update_fields:
             non_pks = [f for f in non_pks
@@ -813,7 +832,7 @@ class Model(six.with_metaclass(ModelBase)):
 
             fields = meta.local_concrete_fields
             if not pk_set:
-                fields = [f for f in fields if not isinstance(f, AutoField)]
+                fields = [f for f in fields if not isinstance(f, AutoField) and not f.delegated]
 
             update_pk = bool(meta.has_auto_field and not pk_set)
             result = self._do_insert(
