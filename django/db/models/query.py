@@ -1065,9 +1065,15 @@ class QuerySet(object):
         batch_size = (batch_size or max(ops.bulk_batch_size(fields, objs), 1))
         for batch in [objs[i:i + batch_size]
                       for i in range(0, len(objs), batch_size)]:
-            self.model._base_manager.ignore_delegated(
-                *self.query.get_ignored_delegated()
-            )._insert(batch, fields=fields, using=self.db)
+            returned = self.model._base_manager.ignore_delegated(
+                    *self.query.get_ignored_delegated()
+                )._insert(batch, fields=fields, using=self.db, return_id=True)
+            for obj, row in zip(batch, returned):
+                if not row:
+                    continue
+                setattr(obj, obj._meta.auto_field.attname, row[0])
+                for field, value in zip(obj._meta.return_on_insert_fields, row[1:]):
+                    setattr(obj, field.attname, value)
 
     def _clone(self, **kwargs):
         query = self.query.clone()

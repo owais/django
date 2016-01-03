@@ -224,10 +224,14 @@ class DatabaseOperations(BaseDatabaseOperations):
     def return_values(self, fields):
         return "RETURNING %s", ()
 
-    def bulk_insert_sql(self, fields, placeholder_rows):
+    def bulk_insert_sql(self, fields, placeholder_rows, return_columns=None):
         placeholder_rows_sql = (", ".join(row) for row in placeholder_rows)
         values_sql = ", ".join("(%s)" % sql for sql in placeholder_rows_sql)
-        return "VALUES " + values_sql
+        result = "VALUES " + values_sql
+        if return_columns:
+            returning_clause = ','.join([c[0] for c in return_columns])
+            result = "%s RETURNING %s" %(result, returning_clause)
+        return result
 
     def adapt_datefield_value(self, value):
         return value

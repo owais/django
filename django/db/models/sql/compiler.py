@@ -1017,10 +1017,15 @@ class SQLInsertCompiler(SQLCompiler):
         # necessary and it should be possible to use placeholders and
         # expressions in bulk inserts too.
         can_bulk = (not self.return_id and self.connection.features.has_bulk_insert)
+        can_bulk = True
 
         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
 
-        if self.should_return_id or self.should_return_fields:
+        return_columns = [(qn(field.column), field.db_return_type(self.connection),)
+                          for field in self.return_fields]
+
+        #if self.should_return_id or self.should_return_fields:
+        if False:
 
             params = param_rows[0]
             result.append("VALUES (%s)" % ", ".join(placeholder_rows[0]))
@@ -1030,8 +1035,6 @@ class SQLInsertCompiler(SQLCompiler):
             if self.should_return_fields:
                 cols = ["%s.%s" % (qn(opts.db_table), qn(field.column),)
                         for field in self.return_fields]
-                return_columns = [(qn(field.column), field.db_return_type(self.connection),)
-                                  for field in self.return_fields]
                 r_fmt, r_params = self.connection.ops.return_values(return_columns)
 
             elif self.should_return_id:
@@ -1044,7 +1047,10 @@ class SQLInsertCompiler(SQLCompiler):
             return [(" ".join(result), tuple(params))]
 
         if can_bulk:
-            result.append(self.connection.ops.bulk_insert_sql(fields, placeholder_rows))
+            if not self.connection.features.can_return_multiple_values:
+                return_columns = None
+            result.append(self.connection.ops.bulk_insert_sql(
+                fields, placeholder_rows, return_columns))
             return [(" ".join(result), tuple(p for ps in param_rows for p in ps))]
         else:
             return [
@@ -1054,9 +1060,9 @@ class SQLInsertCompiler(SQLCompiler):
 
     def execute_sql(self, return_id=False, return_fields=None):
         insert_many = len(self.query.objs) != 1
-        assert not (return_id and insert_many)
         self.return_id = return_id
-        self.return_fields = [] if insert_many else (return_fields or [])[:]
+        # self.return_fields = [] if insert_many else (return_fields or [])[:]
+        self.return_fields = (return_fields or [])[:]
 
         self.should_return_id = bool(self.return_id and self.connection.features.can_return_id_from_insert)
         self.should_return_fields = bool(self.return_fields and self.connection.features.can_return_multiple_values)
@@ -1070,7 +1076,7 @@ class SQLInsertCompiler(SQLCompiler):
             if not ((return_id or return_fields) and cursor):
                 return
             if self.should_return_fields:
-                return self.connection.ops.fetch_returned_fields(cursor, self.return_fields)
+                return self.connection.ops.fetch_returned_fields(cursor, self.return_fields, insert_many)
             if self.should_return_id:
                 return [self.connection.ops.fetch_returned_insert_id(cursor)]
             return [self.connection.ops.last_insert_id(cursor,
